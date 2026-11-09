@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# Manage Bifrost virtual keys (the API keys you hand out).
+#   bfkey new <name> [req_per_min] [tokens_per_day]   create a key, prints sk-bf-...
+#   bfkey list                                          list keys and usage
+#   bfkey off <name> | bfkey on <name>                  disable / re-enable
+#   bfkey rm <name>                                     delete permanently
+# Defaults: 20 requests/min, 500k tokens/day per key, all models on the local SGLang server.
+set -euo pipefail
+DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+set -a; . "$DIR/.env"; set +a
+GW="${BIFROST_URL:-http://127.0.0.1:8080}"
+api(){ curl -sS -u "$BIFROST_ADMIN_USERNAME:$BIFROST_ADMIN_PASSWORD" -H 'content-type: application/json' "$@"; }
+id_of(){ api "$GW/api/governance/virtual-keys" | python3 -c '
+import sys,json
+name=sys.argv[1]
+ks=[k for k in (json.load(sys.stdin).get("virtual_keys") or []) if k["name"]==name]
+if not ks: sys.exit("no key named "+name)
+print(ks[0]["id"])' "$1"; }
+
+case "${1:-}" in
+new)
+  name="${2:?name}"; rpm="${3:-20}"; tpd="${4:-500000}"
+  body=$(python3 -c 'import json,sys; n,r,t=sys.argv[1],int(sys.argv[2]),int(sys.argv[3]); print(json.dumps({
+   "name":n,"description":"issued by bfkey","is_active":True,
+   "provider_configs":[{"provider":"sgl","allowed_models":["*"],"key_ids":["*"]}],
+   "rate_limit":{"request_max_limit":r,"request_reset_duration":"1m",
+                 "token_max_limit":t,"token_reset_duration":"1d"}}))' "$name" "$rpm" "$tpd")
+  api -X POST "$GW/api/governance/virtual-keys" -d "$body" | python3 -c '
+import sys,json; d=json.load(sys.stdin)
+vk=d.get("virtual_key") or sys.exit(json.dumps(d))
+print(vk["value"])' ;;
+list)
+  api "$GW/api/governance/virtual-keys" | python3 -c '
+import sys,json
+for k in (json.load(sys.stdin).get("virtual_keys") or []):
+  rl=k.get("rate_limit") or {}
+  st = "on " if k["is_active"] else "OFF"
+  print("%-20s %s  req %s/%s per min  tok %s/%s per day  %s..." % (k["name"], st,
+        rl.get("request_current_usage", 0), rl.get("request_max_limit"),
+        rl.get("token_current_usage", 0), rl.get("token_max_limit"), k["value"][:12]))' ;;
+off|on)
+  id=$(id_of "${2:?name}"); active=$([ "$1" = on ] && echo true || echo false)
+  api -X PUT "$GW/api/governance/virtual-keys/$id" -d "{\"is_active\":$active}" >/dev/null && echo "$2 -> $1" ;;
+rm)
+  id=$(id_of "${2:?name}"); api -X DELETE "$GW/api/governance/virtual-keys/$id" >/dev/null && echo "deleted $2" ;;
+*) sed -n '2,7p' "$0"; exit 1 ;;
+esac

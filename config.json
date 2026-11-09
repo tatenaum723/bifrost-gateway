@@ -1,0 +1,50 @@
+{
+  "$schema": "https://www.getbifrost.ai/schema",
+  "encryption_key": "env.BIFROST_ENCRYPTION_KEY",
+  "client": {
+    "enforce_auth_on_inference": true,
+    "allow_direct_keys": false,
+    "enable_logging": true,
+    "disable_content_logging": true,
+    "log_retention_days": 90,
+    "drop_excess_requests": true,
+    "max_request_body_size_mb": 20,
+    "allowed_origins": []
+  },
+  "governance": {
+    "auth_config": {
+      "is_enabled": true,
+      "admin_username": "env.BIFROST_ADMIN_USERNAME",
+      "admin_password": "env.BIFROST_ADMIN_PASSWORD",
+      "setup_token": "env.BIFROST_SETUP_TOKEN",
+      "disable_auth_on_inference": false
+    }
+  },
+  "providers": {
+    "sgl": {
+      "keys": [
+        {
+          "name": "sglang-daily",
+          "value": "",
+          "models": ["*"],
+          "weight": 1.0,
+          "sgl_key_config": { "url": "http://127.0.0.1:30000" }
+        }
+      ],
+      "network_config": {
+        "default_request_timeout_in_seconds": 600,
+        "max_retries": 0
+      }
+    }
+  },
+  "config_store": {
+    "enabled": true,
+    "type": "sqlite",
+    "config": { "path": "/app/data/config.db" }
+  },
+  "logs_store": {
+    "enabled": true,
+    "type": "sqlite",
+    "config": { "path": "/app/data/logs.db" }
+  }
+}
